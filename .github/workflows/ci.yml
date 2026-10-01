@@ -1,0 +1,76 @@
+name: CI
+
+# Build Phase 1 CI (brief §11): install, format check, lint, typecheck, unit
+# tests, production build, and the Playwright smoke test where the runner
+# supports installing browser dependencies. No deployment step in this phase.
+#
+# Build Phase 15 Wave 1 addition: an environment-variable-completeness check
+# (scripts/check-env-completeness.mjs) runs alongside the existing steps —
+# see that script's own header for exactly what it catches. Added here
+# rather than as a separate preview-checks.yml workflow: it needs nothing
+# this job doesn't already have (checkout + Node, no new install, no
+# database), so a second workflow would only duplicate the checkout/setup
+# steps for one 2-second script. A genuinely heavier preview-only check
+# (e.g. one requiring its own service container) belongs in its own
+# workflow instead — migration-validation.yml is exactly that case.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Build Phase 15 Wave 1: lets staging-deploy.yml call this same job
+  # ("run the full CI suite first — never deploy on top of a red build")
+  # instead of duplicating every step in that workflow.
+  workflow_call:
+
+env:
+  NEXT_PUBLIC_APP_URL: http://localhost:3000
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.9.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Environment variable completeness (env.ts vs .env.example)
+        run: node scripts/check-env-completeness.mjs
+
+      - name: Migration filename sequence check
+        run: node scripts/check-migration-sequence.mjs
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Bundle size sanity check
+        run: node scripts/check-bundle-size.mjs
+
+      - name: Install Playwright browsers
+        run: pnpm --filter web exec playwright install --with-deps chromium
+
+      - name: End-to-end smoke test
+        run: pnpm test:e2e
+        env:
+          CI: true

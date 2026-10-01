@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "Recruitment Quality Intelligence",
+    "slug": "rqi-mobile",
+    "scheme": "rqi",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": false,
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.logigates.rqi"
+    },
+    "android": {
+      "package": "com.logigates.rqi",
+      "adaptiveIcon": {
+        "backgroundColor": "#0F172A"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": ["expo-secure-store", "expo-font"],
+    "extra": {}
+  }
+}

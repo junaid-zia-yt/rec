@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --font-display and --font-body are set by next/font/local on <html> in
+   app/layout.tsx (with automatic system-font fallbacks baked in) — do not
+   redeclare them here, or this :root rule can win the cascade over the
+   font-loader's generated class depending on CSS injection order. */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+body {
+  @apply bg-canvas text-tertiary antialiased;
+  font-family: var(--font-body);
+}
+
+/* Visible focus state for every interactive element, keyboard or otherwise —
+   Build Phase 1 brief §4 accessibility requirement. Radix components set
+   their own focus-visible rings; this is the fallback for plain elements. */
+:focus-visible {
+  outline: 2px solid theme('colors.secondary.DEFAULT');
+  outline-offset: 2px;
+}
+
+/* Prevent horizontal overflow from any unexpectedly wide child — visual
+   verification checklist item in the Build Phase 1 brief §14. */
+html,
+body {
+  overflow-x: hidden;
+}

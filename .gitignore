@@ -1,0 +1,17 @@
+node_modules
+.pnpm-store
+dist
+.next
+out
+coverage
+.turbo
+*.log
+.env
+.env.local
+.env*.local
+.DS_Store
+playwright-report
+test-results
+.vscode/*
+!.vscode/extensions.json
+next-env.d.ts

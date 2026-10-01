@@ -1,0 +1,123 @@
+name: Migration Validation
+
+# Build Phase 15 Wave 1 (staging deployment preparation). Runs only on a PR
+# that touches supabase/migrations/** — a fresh-Postgres rebuild + the full
+# pgverify regression suite is slow, so it is not part of the main CI job
+# that runs on every PR.
+#
+# What this workflow does NOT do: it never touches a real Supabase project
+# (staging or production) — everything here runs against a throwaway
+# `postgres:16` service container that exists only for the lifetime of this
+# job. See scripts/pgverify-stubs/*.sql for why a plain Postgres container
+# needs two small non-migration stub files before these migrations (which
+# reference auth.users/auth.uid()/storage.*, normally provided by a real
+# Supabase project) will apply at all.
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/**'
+      - 'scripts/verify_candidates.sql'
+      - 'scripts/pgverify-stubs/**'
+      - 'scripts/check-migration-sequence.mjs'
+      - '.github/workflows/migration-validation.yml'
+
+jobs:
+  sequence-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check migration filenames are strictly sequential
+        run: node scripts/check-migration-sequence.mjs
+
+  rebuild-and-verify:
+    runs-on: ubuntu-latest
+    needs: sequence-check
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: rqi
+          POSTGRES_PASSWORD: rqi
+          POSTGRES_DB: rqi_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rqi -d rqi_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: rqi
+      PGPASSWORD: rqi
+      PGDATABASE: rqi_ci
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply local-Postgres auth/storage schema stand-ins
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -f scripts/pgverify-stubs/00_stub_supabase_auth.sql
+          psql -v ON_ERROR_STOP=1 -f scripts/pgverify-stubs/01_stub_storage.sql
+
+      - name: Apply migrations 0001 through current, in strict numerical order
+        run: |
+          set -euo pipefail
+          for f in $(ls supabase/migrations/*.sql | sort); do
+            echo "::group::Applying $f"
+            psql -v ON_ERROR_STOP=1 -q -f "$f"
+            echo "::endgroup::"
+          done
+
+      - name: Run the pgverify regression suite (scripts/verify_candidates.sql)
+        run: |
+          set -euo pipefail
+          # The script's own top-level `\set ON_ERROR_STOP off` is
+          # intentional — several tests deliberately trigger and catch a
+          # constraint violation inline (`do $$ begin ... exception when
+          # check_violation then raise notice 'PASS...' end $$`), and those
+          # must not abort the run. What this step actually checks for is:
+          # (a) psql's own exit code (non-zero on a connection failure or a
+          #     fatal parse error), and
+          # (b) any row in the output whose `pass` column is literally `f`,
+          #     and
+          # (c) any unhandled `ERROR:` line whose message does NOT already
+          #     end in `FAILED: ...` from the script's own do-blocks (those
+          #     ARE the test's pass path, since the block converts the
+          #     caught exception into a `raise notice ... PASS`) — a bare
+          #     top-level ERROR the script did not catch itself is always a
+          #     real regression, never an expected outcome.
+          psql -f scripts/verify_candidates.sql > verify_output.log 2>&1
+          status=$?
+          echo "--- verify_candidates.sql output (tail) ---"
+          tail -100 verify_output.log
+          echo "--- summary ---"
+          fail_rows=$(grep -c '| f *$' verify_output.log || true)
+          echo "Rows with pass=f: $fail_rows"
+          if [ "$status" -ne 0 ]; then
+            echo "::error::psql exited non-zero ($status) running verify_candidates.sql"
+            exit 1
+          fi
+          if [ "$fail_rows" -gt 0 ]; then
+            echo "::error::$fail_rows assertion(s) in verify_candidates.sql reported pass=f"
+            grep -n '| f *$' verify_output.log
+            exit 1
+          fi
+
+      - name: Upload full verification log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-candidates-log
+          path: verify_output.log
+          retention-days: 14

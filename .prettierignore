@@ -1,0 +1,12 @@
+node_modules
+.pnpm-store
+pnpm-lock.yaml
+dist
+.next
+out
+coverage
+.turbo
+playwright-report
+test-results
+reference/stitch
+next-env.d.ts
