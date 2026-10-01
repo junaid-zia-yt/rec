@@ -104,3 +104,4 @@ extend the component set.
 - [`docs/design-system-implementation.md`](docs/design-system-implementation.md) — design tokens and components
 - [`docs/testing-guide.md`](docs/testing-guide.md) — testing strategy and how to extend it
 - [`supabase/README.md`](supabase/README.md) — applying migrations and the manual Supabase configuration steps required
+# rec
